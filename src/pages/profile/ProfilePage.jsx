@@ -6,6 +6,7 @@ import { GoalCard } from '../../components/profile/GoalCard'
 import { ProfileForm } from '../../components/profile/ProfileForm'
 import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
+import { ApiError } from '../../services/apiClient'
 import { useAuthStore } from '../../stores/authStore'
 import { useProfile, useProfileStore } from '../../stores/profileStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -19,14 +20,24 @@ export function ProfilePage() {
   const theme = useUiStore((state) => state.theme)
   const toggleTheme = useUiStore((state) => state.toggleTheme)
 
+  const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   if (!profile) return null
 
-  function handleSave(partialInput) {
-    updateProfile(userId, partialInput)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  async function handleSave(partialInput) {
+    setSaveError('')
+    setSaving(true)
+    try {
+      await updateProfile(userId, partialInput)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (error) {
+      setSaveError(error instanceof ApiError ? error.message : 'Something went wrong. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -45,8 +56,13 @@ export function ProfilePage() {
           </div>
 
           <div className="mt-4 space-y-4 md:mt-0">
-            <ProfileForm profile={profile} onSave={handleSave} />
+            <ProfileForm profile={profile} onSave={handleSave} saving={saving} />
             {saved && <p className="text-center text-sm font-medium text-accent-600 dark:text-accent-400">Saved</p>}
+            {saveError && (
+              <p className="rounded-lg bg-rose-50 px-3 py-2 text-center text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
+                {saveError}
+              </p>
+            )}
             <Button variant="danger" fullWidth onClick={() => logout()}>
               Log out
             </Button>

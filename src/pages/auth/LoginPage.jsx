@@ -24,7 +24,7 @@ export function LoginPage() {
 
     const result = await login({ email, password })
     if (result.success) {
-      const onboardingComplete = useProfileStore.getState().profiles[result.user.id]?.onboardingCompleted
+      const onboardingComplete = useProfileStore.getState().profilesByUser[result.user.id]?.onboardingCompleted
       navigate(onboardingComplete ? '/app/today' : '/onboarding', { replace: true })
     }
   }

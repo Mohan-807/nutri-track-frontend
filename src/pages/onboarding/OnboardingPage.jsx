@@ -8,6 +8,7 @@ import { GENDERS } from '../../constants/genders'
 import { ACTIVITY_LEVELS } from '../../constants/activityLevels'
 import { GOALS } from '../../constants/goals'
 import { resolveIcon } from '../../utils/iconMap'
+import { ApiError } from '../../services/apiClient'
 import { useAuthStore } from '../../stores/authStore'
 import { useProfileStore } from '../../stores/profileStore'
 
@@ -21,6 +22,8 @@ export function OnboardingPage() {
 
   const [step, setStep] = useState(1)
   const [form, setForm] = useState({ heightCm: '', weightKg: '', age: '', gender: '', activityLevel: '', goal: '' })
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   function update(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -33,21 +36,29 @@ export function OnboardingPage() {
     4: Boolean(form.goal),
   }[step]
 
-  function handleNext() {
+  async function handleNext() {
     if (step < TOTAL_STEPS) {
       setStep((current) => current + 1)
       return
     }
 
-    completeOnboarding(userId, {
-      heightCm: Number(form.heightCm),
-      weightKg: Number(form.weightKg),
-      age: Number(form.age),
-      gender: form.gender,
-      activityLevel: form.activityLevel,
-      goal: form.goal,
-    })
-    navigate('/app/today', { replace: true })
+    setSubmitError('')
+    setSubmitting(true)
+    try {
+      await completeOnboarding(userId, {
+        heightCm: Number(form.heightCm),
+        weightKg: Number(form.weightKg),
+        age: Number(form.age),
+        gender: form.gender,
+        activityLevel: form.activityLevel,
+        goal: form.goal,
+      })
+      navigate('/app/today', { replace: true })
+    } catch (error) {
+      setSubmitError(error instanceof ApiError ? error.message : 'Something went wrong. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function handleBack() {
@@ -60,9 +71,15 @@ export function OnboardingPage() {
       totalSteps={TOTAL_STEPS}
       onNext={handleNext}
       onBack={handleBack}
-      nextDisabled={!stepValid}
+      nextDisabled={!stepValid || submitting}
+      nextLoading={submitting}
       nextLabel={step === TOTAL_STEPS ? 'Get Started' : 'Next'}
     >
+      {submitError && (
+        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
+          {submitError}
+        </p>
+      )}
       <AnimatePresence mode="wait">
         <motion.div
           key={step}

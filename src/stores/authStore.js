@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import * as authService from '../services/authService'
 import { setAuthToken } from '../services/apiClient'
+import { useProfileStore } from './profileStore'
 
 // Session state for the real backend now — currentUserId/currentUserEmail/accessToken mirror
 // what /auth/login and /auth/signup return (backend/app/routers/auth.py). The actual accounts
@@ -20,6 +21,11 @@ export const useAuthStore = create(
         const result = await authService.signup({ email, password })
         if (result.success) {
           setAuthToken(result.token)
+          // Resolve profile status (a brand-new signup will 404 → 'not_found') before this
+          // action resolves, so anything reading useIsOnboardingComplete right after — the
+          // route guards, LoginPage's own post-login navigate — sees a settled answer instead
+          // of a momentary "unknown" that would otherwise race the navigation.
+          await useProfileStore.getState().fetchProfile(result.user.id)
           set({
             currentUserId: result.user.id,
             currentUserEmail: result.user.email,
@@ -38,6 +44,7 @@ export const useAuthStore = create(
         const result = await authService.login({ email, password })
         if (result.success) {
           setAuthToken(result.token)
+          await useProfileStore.getState().fetchProfile(result.user.id)
           set({
             currentUserId: result.user.id,
             currentUserEmail: result.user.email,
