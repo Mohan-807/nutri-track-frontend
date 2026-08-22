@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#128B60" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <meta name="description" content="Track daily calories, macros, and micronutrients, log meals, and chat with a nutrition coach." />
+    <title>Nutri Tracker</title>
+    <script>
+      // Set the dark class before first paint (ahead of React/Zustand hydration) so users who
+      // saved dark mode never see a flash of the light theme on load.
+      ;(function () {
+        try {
+          var raw = localStorage.getItem('nutri-tracker:ui')
+          var theme = raw ? JSON.parse(raw).state.theme : null
+          if (theme === 'dark') document.documentElement.classList.add('dark')
+        } catch (e) {
+          /* ignore */
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

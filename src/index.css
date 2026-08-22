@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: toggling `.dark` on <html> (see uiStore) drives every `dark:` variant. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Geist", "system-ui", "-apple-system", "Segoe UI", Roboto, Arial, sans-serif;
+
+  /* Jade accent scale */
+  --color-accent-50: #ecfbf4;
+  --color-accent-100: #d2f4e4;
+  --color-accent-200: #a6e9cb;
+  --color-accent-300: #6fd9ac;
+  --color-accent-400: #3ec28d;
+  --color-accent-500: #1fa874;
+  --color-accent-600: #128b60;
+  --color-accent-700: #0e6f4e;
+  --color-accent-800: #0b5940;
+  --color-accent-900: #094735;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-50;
+  }
+
+  * {
+    @apply border-slate-200 dark:border-slate-700;
+  }
+
+  /* Plain CSS custom properties (not Tailwind utilities) so raw SVG attributes like the
+     ProgressRing's gradient stops can react to the .dark class toggle too. */
+  :root {
+    --ring-from: var(--color-accent-400);
+    --ring-to: var(--color-accent-600);
+  }
+  .dark {
+    --ring-from: var(--color-accent-300);
+    --ring-to: var(--color-accent-500);
+  }
+}
+
+@layer utilities {
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Slow-drifting gradient for decorative hero surfaces (auth panel, dashboard hero card). */
+  .animate-gradient-drift {
+    background-size: 160% 160%;
+    animation: gradient-drift 12s ease-in-out infinite;
+  }
+
+  /* Gradient text for hero numbers (calorie ring center, Add Food's calorie count). */
+  .text-gradient-accent {
+    @apply bg-linear-to-br from-accent-500 to-accent-700 dark:from-accent-300 dark:to-accent-500;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+}
+
+@keyframes gradient-drift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
