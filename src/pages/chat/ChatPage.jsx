@@ -7,20 +7,30 @@ import { ChatInputBar } from '../../components/chat/ChatInputBar'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { useAuthStore } from '../../stores/authStore'
 import { useProfile } from '../../stores/profileStore'
-import { useDayTotals } from '../../stores/nutritionLogStore'
+import { useDayStatus, useDayTotals, useNutritionLogStore } from '../../stores/nutritionLogStore'
 import { useChatStore, useMessages } from '../../stores/chatStore'
 import { todayKey } from '../../utils/dateUtils'
 
 export function ChatPage() {
   const userId = useAuthStore((state) => state.currentUserId)
   const profile = useProfile(userId)
-  const todayTotals = useDayTotals(userId, todayKey())
+  const dateKey = todayKey()
+  const dayStatus = useDayStatus(userId, dateKey)
+  const fetchDay = useNutritionLogStore((state) => state.fetchDay)
+  const todayTotals = useDayTotals(userId, dateKey)
   const messages = useMessages(userId)
   const sendMessage = useChatStore((state) => state.sendMessage)
   const isAssistantTyping = useChatStore((state) => state.isAssistantTyping)
 
   const [draft, setDraft] = useState('')
   const scrollRef = useRef(null)
+
+  // todayTotals feeds into the chat's `context` (see handleSend) — this store is real now
+  // (Preliminary B), so it needs its own fetch trigger; TodayPage isn't guaranteed to have run
+  // first if the user opens the Chat tab directly.
+  useEffect(() => {
+    if (userId && dayStatus === 'idle') fetchDay(userId, dateKey)
+  }, [userId, dateKey, dayStatus, fetchDay])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })

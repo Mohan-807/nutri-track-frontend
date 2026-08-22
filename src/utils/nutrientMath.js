@@ -21,18 +21,6 @@ export function scaleNutrients(nutrients, quantity) {
   return scaled
 }
 
-// Sums a day's logged entries into one nutrient totals object.
-export function sumNutrients(entries) {
-  const totals = { ...EMPTY_TOTALS }
-  for (const entry of entries) {
-    for (const key of Object.keys(totals)) {
-      totals[key] += entry.nutrients?.[key] ?? 0
-    }
-  }
-  for (const key of Object.keys(totals)) totals[key] = round1(totals[key])
-  return totals
-}
-
 export function emptyTotals() {
   return { ...EMPTY_TOTALS }
 }

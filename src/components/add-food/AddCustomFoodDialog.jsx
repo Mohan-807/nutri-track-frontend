@@ -18,8 +18,9 @@ const EMPTY_FORM = {
 // Manual equivalent of what a future AI would do automatically: create a new food record with
 // its own nutrients, hand it back to the caller (AddFoodPage), which drops straight into the
 // existing quantity/add-to-log flow — same as picking any row from the table.
-export function AddCustomFoodDialog({ isOpen, onClose, onCreate }) {
+export function AddCustomFoodDialog({ isOpen, onClose, onCreate, error }) {
   const [form, setForm] = useState(EMPTY_FORM)
+  const [submitting, setSubmitting] = useState(false)
 
   function update(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -30,10 +31,18 @@ export function AddCustomFoodDialog({ isOpen, onClose, onCreate }) {
     onClose()
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
-    onCreate(form)
-    setForm(EMPTY_FORM)
+    setSubmitting(true)
+    try {
+      await onCreate(form)
+      setForm(EMPTY_FORM)
+    } catch {
+      // Creation failed — the parent surfaces the message via `error`. Leave the form filled in
+      // so the user doesn't have to retype everything to retry.
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const canSubmit = form.name.trim() && form.servingLabel.trim() && form.calories !== ''
@@ -77,7 +86,13 @@ export function AddCustomFoodDialog({ isOpen, onClose, onCreate }) {
           </div>
         </div>
 
-        <Button type="submit" fullWidth size="lg" disabled={!canSubmit}>
+        {error && (
+          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
+            {error}
+          </p>
+        )}
+
+        <Button type="submit" fullWidth size="lg" disabled={!canSubmit || submitting} loading={submitting}>
           Add food
         </Button>
       </form>

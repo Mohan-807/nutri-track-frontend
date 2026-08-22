@@ -1,6 +1,6 @@
-// Shared name/alias matching + ranking, used by both the mocked foodLookupService (async,
-// capped, simulates a network search) and the Add Food table's live filtering (sync, uncapped —
-// it's just narrowing down data you already have client-side, no need to fake latency for that).
+// Name/alias matching + ranking for the Add Food table's live, client-side filtering over the
+// already-fetched catalog (foodCatalogStore). Ported 1:1 to the backend as rank_foods() in
+// app/services/food_service.py, which the /foods endpoint uses for the same ranking server-side.
 function normalize(value) {
   return value.trim().toLowerCase()
 }
