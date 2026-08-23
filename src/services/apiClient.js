@@ -10,6 +10,7 @@ if (!BASE_URL) {
 }
 
 let authToken = null
+let onUnauthorized = null
 
 // Called by authStore whenever the session's token changes (login, signup, logout, or
 // rehydrating a persisted session from localStorage on page load). apiClient never touches
@@ -17,6 +18,17 @@ let authToken = null
 // generic HTTP client any future service can reuse, not something coupled to auth internals.
 export function setAuthToken(token) {
   authToken = token
+}
+
+// Registered by authStore. Invoked when the backend rejects a request that DID carry a token —
+// i.e. the session is no longer valid (expired JWT, revoked/unknown user, or a stale session
+// persisted by an older version of this app). Without this, such a session leaves the app
+// permanently stuck: route guards see a currentUserId and keep the user inside /app, while every
+// request 401s, and the only "Log out" button lives on a page they can no longer reach.
+// A callback (rather than importing authStore here) keeps apiClient free of auth-store coupling
+// and avoids an import cycle, since authStore already imports this module.
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler
 }
 
 export class ApiError extends Error {
@@ -38,8 +50,14 @@ function extractErrorMessage(body, fallback) {
 }
 
 async function doFetch(path, { method = 'GET', body, headers, ...rest } = {}) {
+  // Captured before the request so a 401 can be told apart: with a token it means "this session
+  // is dead", without one it's just an unauthenticated call (e.g. a wrong password on /auth/login)
+  // and must NOT trigger a session wipe.
+  const hadToken = authToken !== null
+
+  let response
   try {
-    return await fetch(`${BASE_URL}${path}`, {
+    response = await fetch(`${BASE_URL}${path}`, {
       method,
       headers: {
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
@@ -52,6 +70,9 @@ async function doFetch(path, { method = 'GET', body, headers, ...rest } = {}) {
   } catch {
     throw new ApiError('Could not reach the server. Check your connection and try again.', 0)
   }
+
+  if (response.status === 401 && hadToken) onUnauthorized?.()
+  return response
 }
 
 async function throwForErrorResponse(response) {

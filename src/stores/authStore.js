@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import * as authService from '../services/authService'
-import { setAuthToken } from '../services/apiClient'
+import { setAuthToken, setUnauthorizedHandler } from '../services/apiClient'
 import { useProfileStore } from './profileStore'
 
 // Session state for the real backend now — currentUserId/currentUserEmail/accessToken mirror
@@ -68,6 +68,17 @@ export const useAuthStore = create(
     }),
     {
       name: 'nutri-tracker:auth',
+      // Bumped when this store started persisting a real backend JWT. Version 0 is the older
+      // localStorage-only session shape, which held a currentUserId but no accessToken at all —
+      // rehydrating one of those produces a "logged in" user whose every request 401s. Anything
+      // without a token is discarded here so the app treats it as simply logged out.
+      version: 1,
+      migrate: (persisted, version) => {
+        if (version < 1 || !persisted?.accessToken) {
+          return { currentUserId: null, currentUserEmail: null, accessToken: null }
+        }
+        return persisted
+      },
       partialize: (state) => ({
         currentUserId: state.currentUserId,
         currentUserEmail: state.currentUserEmail,
@@ -76,6 +87,15 @@ export const useAuthStore = create(
     },
   ),
 )
+
+// A request that carried a token still came back 401 → the session is dead (expired JWT, or a
+// user row that no longer exists). Clear it so the route guards fall through to /login instead of
+// leaving the user inside /app where every request fails. Deliberately not authStore's async
+// logout(): this runs mid-request and only needs to drop local session state.
+setUnauthorizedHandler(() => {
+  setAuthToken(null)
+  useAuthStore.setState({ currentUserId: null, currentUserEmail: null, accessToken: null, status: 'idle', error: null })
+})
 
 // apiClient keeps the token in a plain in-memory variable, not localStorage — so once zustand's
 // persist middleware finishes rehydrating a previously saved session, push that restored token

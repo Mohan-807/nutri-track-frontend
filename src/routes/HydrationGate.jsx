@@ -27,6 +27,7 @@ export function HydrationGate({ children }) {
   const currentUserId = useAuthStore((state) => state.currentUserId)
   const profileStatus = useProfileStore((state) => (currentUserId ? (state.statusByUser[currentUserId] ?? 'idle') : 'idle'))
   const fetchProfile = useProfileStore((state) => state.fetchProfile)
+  const logout = useAuthStore((state) => state.logout)
 
   // authStore itself already resolves the profile fetch as part of login()/signup(), so this
   // effect only ever fires on a hard refresh with an existing persisted session — the one case
@@ -47,9 +48,16 @@ export function HydrationGate({ children }) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-slate-50 px-6 text-center dark:bg-slate-950">
         <p className="text-sm text-slate-500 dark:text-slate-400">Couldn't reach the server to load your profile.</p>
-        <Button variant="secondary" onClick={() => fetchProfile(currentUserId)}>
-          Try again
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="secondary" onClick={() => fetchProfile(currentUserId)}>
+            Try again
+          </Button>
+          {/* Escape hatch: this screen renders *instead of* the router, so without it a user whose
+              profile can't load has no way to reach the Profile page's own log-out button. */}
+          <Button variant="danger" onClick={() => logout()}>
+            Log out
+          </Button>
+        </div>
       </div>
     )
   }
