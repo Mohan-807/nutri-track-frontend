@@ -1,39 +1,41 @@
-import { CHAT_REPLIES, FALLBACK_REPLIES } from '../data/mockChatReplies'
-import { wait } from './wait'
+import { apiClient } from './apiClient'
 
-function pickRandom(list) {
-  return list[Math.floor(Math.random() * list.length)]
+// Real backend now — GET/POST /chat (backend/app/routers/chat.py → chat_service →
+// llm_service → Gemini). The backend persists every turn and replays recent history back to
+// the LLM itself, so this file only ever sends the newest message — never the whole thread.
+export async function getHistory() {
+  const { messages } = await apiClient.get('/chat')
+  return messages
 }
 
-function resolveReply(entry, context) {
-  return typeof entry === 'function' ? entry(context) : entry
-}
+// Real Server-Sent Events now (Step 9) — POST /chat streams the reply incrementally instead of
+// returning one JSON blob. `onEvent` is called once per event, in order:
+//   {type: 'chunk', text}            — a piece of the model's final answer, as it's generated
+//   {type: 'tool_call', name, args}  — the model is calling a backend tool (e.g. search_food)
+//   {type: 'tool_result', name, success} — that tool's outcome
+//   {type: 'done', reply}            — always last on success; the complete final text
+//   {type: 'error', message}         — replaces 'done' if something failed
+// This file only knows the SSE wire format (`data: <json>\n\n`); parsing that is what belongs
+// here, not in chatStore.
+export async function sendMessage(userMessage, onEvent) {
+  const response = await apiClient.postStream('/chat', { message: userMessage })
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
 
-function findReply(userMessage, context) {
-  const normalized = userMessage.toLowerCase()
-  const matchedGroup = CHAT_REPLIES.find((group) =>
-    group.keywords.some((keyword) => normalized.includes(keyword)),
-  )
-  const entry = matchedGroup ? pickRandom(matchedGroup.replies) : pickRandom(FALLBACK_REPLIES)
-  return resolveReply(entry, context)
-}
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
 
-// Mocked chat backend. `onChunk` is optional and, if given, is called with the growing reply
-// string to fake a typewriter/streaming effect — a real streaming endpoint can plug into the
-// exact same signature later without chatStore.sendMessage changing at all.
-export async function getReply(userMessage, context = {}, onChunk) {
-  await wait(400 + Math.random() * 400)
-  const replyText = findReply(userMessage, context)
-
-  if (onChunk) {
-    const words = replyText.split(' ')
-    let streamed = ''
-    for (let i = 0; i < words.length; i += 1) {
-      streamed += (i === 0 ? '' : ' ') + words[i]
-      onChunk(streamed)
-      await wait(30)
+    let boundary = buffer.indexOf('\n\n')
+    while (boundary !== -1) {
+      const block = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      for (const line of block.split('\n')) {
+        if (line.startsWith('data: ')) onEvent(JSON.parse(line.slice('data: '.length)))
+      }
+      boundary = buffer.indexOf('\n\n')
     }
   }
-
-  return { success: true, reply: replyText }
 }

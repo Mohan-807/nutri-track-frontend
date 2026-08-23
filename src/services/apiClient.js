@@ -37,10 +37,9 @@ function extractErrorMessage(body, fallback) {
   return fallback
 }
 
-async function request(path, { method = 'GET', body, headers, ...rest } = {}) {
-  let response
+async function doFetch(path, { method = 'GET', body, headers, ...rest } = {}) {
   try {
-    response = await fetch(`${BASE_URL}${path}`, {
+    return await fetch(`${BASE_URL}${path}`, {
       method,
       headers: {
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
@@ -53,7 +52,9 @@ async function request(path, { method = 'GET', body, headers, ...rest } = {}) {
   } catch {
     throw new ApiError('Could not reach the server. Check your connection and try again.', 0)
   }
+}
 
+async function throwForErrorResponse(response) {
   const text = await response.text()
   let data = null
   if (text) {
@@ -63,12 +64,20 @@ async function request(path, { method = 'GET', body, headers, ...rest } = {}) {
       // Non-JSON body (e.g. an upstream proxy error page) — fall through with data left null.
     }
   }
+  throw new ApiError(extractErrorMessage(data, `Request failed (${response.status}).`), response.status)
+}
 
-  if (!response.ok) {
-    throw new ApiError(extractErrorMessage(data, `Request failed (${response.status}).`), response.status)
+async function request(path, options) {
+  const response = await doFetch(path, options)
+  if (!response.ok) await throwForErrorResponse(response)
+
+  const text = await response.text()
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
   }
-
-  return data
 }
 
 export const apiClient = {
@@ -77,4 +86,14 @@ export const apiClient = {
   put: (path, body) => request(path, { method: 'PUT', body }),
   patch: (path, body) => request(path, { method: 'PATCH', body }),
   delete: (path) => request(path, { method: 'DELETE' }),
+
+  // For endpoints that stream a response body (text/event-stream) instead of returning one JSON
+  // blob — e.g. POST /chat (Step 9). Returns the raw Response so the caller can read
+  // response.body itself; everything else (auth header, base URL, error handling for a
+  // non-streaming error response) is identical to a normal request.
+  postStream: async (path, body) => {
+    const response = await doFetch(path, { method: 'POST', body })
+    if (!response.ok) await throwForErrorResponse(response)
+    return response
+  },
 }

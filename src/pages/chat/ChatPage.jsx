@@ -5,19 +5,14 @@ import { TopBar } from '../../components/layout/TopBar'
 import { ChatBubble } from '../../components/chat/ChatBubble'
 import { ChatInputBar } from '../../components/chat/ChatInputBar'
 import { EmptyState } from '../../components/ui/EmptyState'
+import { Button } from '../../components/ui/Button'
 import { useAuthStore } from '../../stores/authStore'
-import { useProfile } from '../../stores/profileStore'
-import { useDayStatus, useDayTotals, useNutritionLogStore } from '../../stores/nutritionLogStore'
-import { useChatStore, useMessages } from '../../stores/chatStore'
-import { todayKey } from '../../utils/dateUtils'
+import { useChatStatus, useChatStore, useMessages } from '../../stores/chatStore'
 
 export function ChatPage() {
   const userId = useAuthStore((state) => state.currentUserId)
-  const profile = useProfile(userId)
-  const dateKey = todayKey()
-  const dayStatus = useDayStatus(userId, dateKey)
-  const fetchDay = useNutritionLogStore((state) => state.fetchDay)
-  const todayTotals = useDayTotals(userId, dateKey)
+  const chatStatus = useChatStatus(userId)
+  const fetchHistory = useChatStore((state) => state.fetchHistory)
   const messages = useMessages(userId)
   const sendMessage = useChatStore((state) => state.sendMessage)
   const isAssistantTyping = useChatStore((state) => state.isAssistantTyping)
@@ -25,12 +20,10 @@ export function ChatPage() {
   const [draft, setDraft] = useState('')
   const scrollRef = useRef(null)
 
-  // todayTotals feeds into the chat's `context` (see handleSend) — this store is real now
-  // (Preliminary B), so it needs its own fetch trigger; TodayPage isn't guaranteed to have run
-  // first if the user opens the Chat tab directly.
+  // Conversation history now lives in Postgres (Step 3) — load it once per user on mount.
   useEffect(() => {
-    if (userId && dayStatus === 'idle') fetchDay(userId, dateKey)
-  }, [userId, dateKey, dayStatus, fetchDay])
+    if (userId && chatStatus === 'idle') fetchHistory(userId)
+  }, [userId, chatStatus, fetchHistory])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -38,9 +31,14 @@ export function ChatPage() {
 
   function handleSend() {
     const text = draft.trim()
-    if (!text || isAssistantTyping) return
+    // Also blocked until chatStatus is 'loaded': sending before history finishes fetching would
+    // race fetchHistory's own store update and could clobber the just-sent optimistic message.
+    if (!text || isAssistantTyping || chatStatus !== 'loaded') return
     setDraft('')
-    sendMessage(userId, text, { profile, todayTotals, targets: profile?.targets })
+    // No client-supplied "context" (profile, today's totals) — the AI gets real data itself via
+    // tools (get_day_totals, search_food, ...), which is trustworthy; a client-side JSON blob
+    // the frontend claims is true would not be.
+    sendMessage(userId, text)
   }
 
   return (
@@ -50,23 +48,39 @@ export function ChatPage() {
       <TopBar title="Nutrition Coach" />
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 md:px-6">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-          {messages.length === 0 ? (
+          {chatStatus === 'error' ? (
+            <div className="mt-10 flex flex-col items-center gap-3 text-center">
+              <p className="text-sm text-slate-500 dark:text-slate-400">Couldn't load your conversation.</p>
+              <Button variant="secondary" onClick={() => fetchHistory(userId)}>
+                Try again
+              </Button>
+            </div>
+          ) : chatStatus === 'loaded' && messages.length === 0 ? (
             <EmptyState
               icon={MessageCircle}
               title="Ask your coach anything"
               description='Try "How am I doing today?" or "What should I eat for more protein?"'
               className="mt-10"
             />
-          ) : (
+          ) : chatStatus === 'loaded' ? (
             <AnimatePresence initial={false}>
               {messages.map((message) => (
                 <ChatBubble key={message.id} role={message.role} content={message.content} />
               ))}
             </AnimatePresence>
+          ) : (
+            <div className="mt-10 flex justify-center">
+              <div className="size-8 animate-spin rounded-full border-2 border-slate-300 border-t-accent-600 dark:border-slate-700 dark:border-t-accent-400" />
+            </div>
           )}
         </div>
       </div>
-      <ChatInputBar value={draft} onChange={setDraft} onSend={handleSend} disabled={isAssistantTyping} />
+      <ChatInputBar
+        value={draft}
+        onChange={setDraft}
+        onSend={handleSend}
+        disabled={isAssistantTyping || chatStatus !== 'loaded'}
+      />
     </div>
   )
 }

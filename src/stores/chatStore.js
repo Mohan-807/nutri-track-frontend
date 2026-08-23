@@ -1,58 +1,93 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 import { generateId } from '../utils/id'
-import { getReply } from '../services/chatService'
+import { getHistory, sendMessage as sendChatMessage } from '../services/chatService'
+import { ApiError } from '../services/apiClient'
 
 const EMPTY_MESSAGES = []
 
-export const useChatStore = create(
-  persist(
-    (set) => ({
-      threadsByUser: {},
-      isAssistantTyping: false,
+// Server-owned now — GET/POST /chat (backend/app/routers/chat.py). No `persist` middleware:
+// conversation history lives in Postgres (chat_messages table), not localStorage — the backend
+// is the source of truth, same as profile/foods/logs.
+export const useChatStore = create((set, get) => ({
+  threadsByUser: {},
+  statusByUser: {}, // 'idle' | 'loading' | 'loaded' | 'error'
+  isAssistantTyping: false,
 
-      // Appends the user message, a "typing" assistant placeholder (content: null), then streams
-      // the mocked reply into that same placeholder via chatService's onChunk callback — the
-      // exact shape a real streaming endpoint would fill in later.
-      sendMessage: async (userId, content, context = {}) => {
-        const userMessage = { id: generateId('msg'), role: 'user', content, createdAt: new Date().toISOString() }
-        const assistantMessageId = generateId('msg')
+  fetchHistory: async (userId) => {
+    if (!userId || get().statusByUser[userId] === 'loading') return
+    set((state) => ({ statusByUser: { ...state.statusByUser, [userId]: 'loading' } }))
+    try {
+      const messages = await getHistory()
+      set((state) => ({
+        threadsByUser: { ...state.threadsByUser, [userId]: messages },
+        statusByUser: { ...state.statusByUser, [userId]: 'loaded' },
+      }))
+    } catch {
+      set((state) => ({ statusByUser: { ...state.statusByUser, [userId]: 'error' } }))
+    }
+  },
 
-        set((state) => ({
-          threadsByUser: {
-            ...state.threadsByUser,
-            [userId]: [
-              ...(state.threadsByUser[userId] ?? []),
-              userMessage,
-              { id: assistantMessageId, role: 'assistant', content: null, createdAt: new Date().toISOString() },
-            ],
-          },
-          isAssistantTyping: true,
-        }))
+  // Appends the user message and a "typing" assistant placeholder (content: null), then fills
+  // that same placeholder in as real Server-Sent Events arrive from the backend — 'chunk'
+  // events grow the text as Gemini actually generates it (real streaming now, not a fake
+  // client-side reveal); 'tool_call'/'tool_result' have no dedicated UI yet, so the typing
+  // indicator (content still null, no chunk received for the round in progress) is what the
+  // user sees while the model is searching/logging.
+  sendMessage: async (userId, content) => {
+    const userMessage = { id: generateId('msg'), role: 'user', content, createdAt: new Date().toISOString() }
+    const assistantMessageId = generateId('msg')
 
-        const updateAssistantMessage = (text) => {
-          set((state) => ({
-            threadsByUser: {
-              ...state.threadsByUser,
-              [userId]: (state.threadsByUser[userId] ?? []).map((message) =>
-                message.id === assistantMessageId ? { ...message, content: text } : message,
-              ),
-            },
-          }))
+    set((state) => ({
+      threadsByUser: {
+        ...state.threadsByUser,
+        [userId]: [
+          ...(state.threadsByUser[userId] ?? []),
+          userMessage,
+          { id: assistantMessageId, role: 'assistant', content: null, createdAt: new Date().toISOString() },
+        ],
+      },
+      isAssistantTyping: true,
+    }))
+
+    const setAssistantContent = (text) => {
+      set((state) => ({
+        threadsByUser: {
+          ...state.threadsByUser,
+          [userId]: (state.threadsByUser[userId] ?? []).map((message) =>
+            message.id === assistantMessageId ? { ...message, content: text } : message,
+          ),
+        },
+      }))
+    }
+
+    let streamed = ''
+    try {
+      await sendChatMessage(content, (event) => {
+        if (event.type === 'chunk') {
+          streamed += event.text
+          setAssistantContent(streamed)
+        } else if (event.type === 'done') {
+          setAssistantContent(event.reply)
+        } else if (event.type === 'error') {
+          setAssistantContent(event.message)
         }
-
-        await getReply(content, context, updateAssistantMessage)
-        set({ isAssistantTyping: false })
-      },
-
-      clearThread: (userId) => {
-        set((state) => ({ threadsByUser: { ...state.threadsByUser, [userId]: [] } }))
-      },
-    }),
-    { name: 'nutri-tracker:chat' },
-  ),
-)
+      })
+    } catch (error) {
+      // A real network call can fail (server down, Gemini quota, etc.) before the stream even
+      // starts — where the old mock never could. Without this, a failure would leave
+      // isAssistantTyping stuck true and the placeholder frozen forever. This is just "don't
+      // get stuck"; categorizing failures (retry vs. not, rate limits, timeouts) is Step 10.
+      setAssistantContent(error instanceof ApiError ? error.message : 'Something went wrong. Please try again.')
+    } finally {
+      set({ isAssistantTyping: false })
+    }
+  },
+}))
 
 export function useMessages(userId) {
-  return useChatStore((state) => (userId ? state.threadsByUser[userId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES))
+  return useChatStore((state) => (userId ? (state.threadsByUser[userId] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES))
+}
+
+export function useChatStatus(userId) {
+  return useChatStore((state) => (userId ? (state.statusByUser[userId] ?? 'idle') : 'idle'))
 }
