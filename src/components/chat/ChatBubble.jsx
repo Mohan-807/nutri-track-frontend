@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { Salad, User } from 'lucide-react'
 import { cn } from '../../utils/cn'
+import { MarkdownContent } from './MarkdownContent'
 import { TypingIndicator } from './TypingIndicator'
 
 // content === null means the assistant reply hasn't started streaming in yet.
@@ -33,7 +34,13 @@ export function ChatBubble({ role, content, model }) {
             : 'rounded-bl-md bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50',
         )}
       >
-        {isLoading ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{content}</p>}
+        {isLoading ? (
+          <TypingIndicator />
+        ) : isUser ? (
+          <p className="whitespace-pre-wrap">{content}</p>
+        ) : (
+          <MarkdownContent content={content} />
+        )}
         {!isUser && !isLoading && modelLabel && (
           <p className="mt-1.5 text-[10px] text-slate-400 dark:text-slate-500">{modelLabel}</p>
         )}

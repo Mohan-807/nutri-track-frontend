@@ -9,7 +9,12 @@ import { EmptyState } from '../../components/ui/EmptyState'
 import { Button } from '../../components/ui/Button'
 import { useAuthStore } from '../../stores/authStore'
 import { useProfile } from '../../stores/profileStore'
-import { useDayEntries, useDayStatus, useDayTotals, useNutritionLogStore } from '../../stores/nutritionLogStore'
+import {
+  useDayEntries,
+  useDayStatus,
+  useDayTotals,
+  useNutritionLogStore,
+} from '../../stores/nutritionLogStore'
 import { todayKey, formatDisplayDate } from '../../utils/dateUtils'
 
 export function TodayPage() {
@@ -25,9 +30,16 @@ export function TodayPage() {
   const totals = useDayTotals(userId, dateKey)
   const [deleteError, setDeleteError] = useState('')
 
+  // Runs once per mount (not tied to `status`, which would re-trigger this every time the fetch
+  // itself changes it) — so navigating back to Today after logging food elsewhere (the chat tab
+  // writes to /logs directly, bypassing this store) always checks for fresh data. The very first
+  // load still shows the full spinner; a revisit refreshes silently in the background.
   useEffect(() => {
-    if (userId && status === 'idle') fetchDay(userId, dateKey)
-  }, [userId, dateKey, status, fetchDay])
+    if (!userId) return
+    const alreadyLoaded = useNutritionLogStore.getState().statusByUser[userId]?.[dateKey] === 'loaded'
+    fetchDay(userId, dateKey, { silent: alreadyLoaded })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, dateKey])
 
   async function handleDelete(entryId) {
     setDeleteError('')

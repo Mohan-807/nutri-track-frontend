@@ -31,9 +31,15 @@ export function HistoryPage() {
   const entries = useDayEntries(userId, dateKey)
   const totals = useDayTotals(userId, dateKey)
 
+  // Runs once per mount/date change (not tied to `status` — see TodayPage.jsx for why): revisiting
+  // a date after logging food elsewhere (the chat tab writes to /logs directly, bypassing this
+  // store) always checks for fresh data, refreshing silently rather than re-blanking the page.
   useEffect(() => {
-    if (userId && !isFutureDate && status === 'idle') fetchDay(userId, dateKey)
-  }, [userId, dateKey, isFutureDate, status, fetchDay])
+    if (!userId || isFutureDate) return
+    const alreadyLoaded = useNutritionLogStore.getState().statusByUser[userId]?.[dateKey] === 'loaded'
+    fetchDay(userId, dateKey, { silent: alreadyLoaded })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, dateKey, isFutureDate])
 
   async function handleDelete(entryId) {
     setDeleteError('')

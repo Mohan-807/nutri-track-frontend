@@ -12,11 +12,19 @@ export const useNutritionLogStore = create((set, get) => ({
   errorByUser: {}, // userId -> { [dateKey]: message }
   loggedDatesByUser: {}, // userId -> string[]
 
-  fetchDay: async (userId, dateKey) => {
+  // `silent`: when a day was already loaded once this session, a page revisiting it (e.g.
+  // navigating back to Today after logging food via the chat tab, which writes to the same
+  // /logs endpoint without going through this store at all) needs a *refresh*, not the original
+  // full-page loading spinner — that would needlessly re-blank an already-showing log on every
+  // tab switch. Silent mode keeps showing the last-known data while it re-fetches in the
+  // background, and swallows a failure rather than replacing good data with an error screen.
+  fetchDay: async (userId, dateKey, { silent = false } = {}) => {
     if (!userId) return
-    set((state) => ({
-      statusByUser: { ...state.statusByUser, [userId]: { ...state.statusByUser[userId], [dateKey]: 'loading' } },
-    }))
+    if (!silent) {
+      set((state) => ({
+        statusByUser: { ...state.statusByUser, [userId]: { ...state.statusByUser[userId], [dateKey]: 'loading' } },
+      }))
+    }
     try {
       const day = await apiClient.get(`/logs/${dateKey}`)
       set((state) => ({
@@ -24,6 +32,7 @@ export const useNutritionLogStore = create((set, get) => ({
         statusByUser: { ...state.statusByUser, [userId]: { ...state.statusByUser[userId], [dateKey]: 'loaded' } },
       }))
     } catch (error) {
+      if (silent) return // keep showing the last-known-good day rather than an error screen
       set((state) => ({
         statusByUser: { ...state.statusByUser, [userId]: { ...state.statusByUser[userId], [dateKey]: 'error' } },
         errorByUser: { ...state.errorByUser, [userId]: { ...state.errorByUser[userId], [dateKey]: error.message } },
