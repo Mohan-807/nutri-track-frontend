@@ -4,9 +4,14 @@ import { cn } from '../../utils/cn'
 import { TypingIndicator } from './TypingIndicator'
 
 // content === null means the assistant reply hasn't started streaming in yet.
-export function ChatBubble({ role, content }) {
+// `model` is only set on assistant messages (the backend records which AI produced each reply,
+// since automatic failover means it can differ from message to message).
+export function ChatBubble({ role, content, model }) {
   const isUser = role === 'user'
   const isLoading = content == null
+  // Strip the vendor prefix that some ids carry (e.g. "nvidia/nemotron-3-…") — the label is a
+  // small provenance hint, not a full model identifier.
+  const modelLabel = model?.includes('/') ? model.split('/').pop() : model
 
   return (
     <motion.div
@@ -29,6 +34,9 @@ export function ChatBubble({ role, content }) {
         )}
       >
         {isLoading ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{content}</p>}
+        {!isUser && !isLoading && modelLabel && (
+          <p className="mt-1.5 text-[10px] text-slate-400 dark:text-slate-500">{modelLabel}</p>
+        )}
       </div>
       {isUser && (
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-slate-400 to-slate-600 text-white dark:from-slate-600 dark:to-slate-700">

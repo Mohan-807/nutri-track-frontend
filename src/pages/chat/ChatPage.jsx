@@ -65,7 +65,7 @@ export function ChatPage() {
           ) : chatStatus === 'loaded' ? (
             <AnimatePresence initial={false}>
               {messages.map((message) => (
-                <ChatBubble key={message.id} role={message.role} content={message.content} />
+                <ChatBubble key={message.id} role={message.role} content={message.content} model={message.model} />
               ))}
             </AnimatePresence>
           ) : (

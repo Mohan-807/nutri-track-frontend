@@ -49,16 +49,17 @@ export const useChatStore = create((set, get) => ({
       isAssistantTyping: true,
     }))
 
-    const setAssistantContent = (text) => {
+    const patchAssistant = (patch) => {
       set((state) => ({
         threadsByUser: {
           ...state.threadsByUser,
           [userId]: (state.threadsByUser[userId] ?? []).map((message) =>
-            message.id === assistantMessageId ? { ...message, content: text } : message,
+            message.id === assistantMessageId ? { ...message, ...patch } : message,
           ),
         },
       }))
     }
+    const setAssistantContent = (text) => patchAssistant({ content: text })
 
     let streamed = ''
     try {
@@ -66,8 +67,12 @@ export const useChatStore = create((set, get) => ({
         if (event.type === 'chunk') {
           streamed += event.text
           setAssistantContent(streamed)
+        } else if (event.type === 'provider') {
+          // Which AI is serving this turn. Arrives before any text — and can name the fallback
+          // model if the preferred provider was unavailable and the backend failed over.
+          patchAssistant({ provider: event.provider, model: event.model })
         } else if (event.type === 'done') {
-          setAssistantContent(event.reply)
+          patchAssistant({ content: event.reply, provider: event.provider, model: event.model })
         } else if (event.type === 'error') {
           setAssistantContent(event.message)
         }
